@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Reactive Diagram</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg: #f0f2f5;
+    --surface: #ffffff;
+    --text: #1a1a2e;
+    --text-secondary: #6b7280;
+    --primary: #6366f1;
+    --primary-light: #a5b4fc;
+    --accent1: #06b6d4;
+    --accent2: #8b5cf6;
+    --accent3: #ec4899;
+    --accent4: #f59e0b;
+    --accent5: #10b981;
+    --border: #e5e7eb;
+    --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    --shadow-hover: 0 8px 40px rgba(99,102,241,0.2);
+    --connector: #cbd5e1;
+    --glow: rgba(99,102,241,0.4);
+  }
+
+  [data-theme="dark"] {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --text: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --border: #334155;
+    --shadow: 0 4px 24px rgba(0,0,0,0.3);
+    --shadow-hover: 0 8px 40px rgba(99,102,241,0.3);
+    --connector: #475569;
+    --glow: rgba(99,102,241,0.6);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    transition: all 0.4s ease;
+    overflow-x: hidden;
+  }
+
+  /* ---- TOOLBAR ---- */
+  .toolbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 28px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    box-shadow: var(--shadow);
+  }
+  .toolbar h1 {
+    font-size: 18px; font-weight: 700;
+    background: linear-gradient(135deg, var(--primary), var(--accent3));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .toolbar-actions { display: flex; gap: 10px; align-items: center; }
+  .btn {
+    padding: 7px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); cursor: pointer;
+    font-size: 13px; font-weight: 500; transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
+  .btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .zoom-display { font-size: 13px; color: var(--text-secondary); min-width: 48px; text-align: center; }
+
+  /* ---- CANVAS ---- */
+  .canvas-wrapper {
+    margin-top: 60px;
+    width: 100vw;
+    height: calc(100vh - 60px);
+    overflow: auto;
+    position: relative;
+  }
+  .canvas {
+    width: 1400px; min-height: 1200px;
+    margin: 40px auto;
+    position: relative;
+    transform-origin: top center;
+    transition: transform 0.3s ease;
+  }
+
+  /* ---- SECTION TITLE ---- */
+  .section-title {
+    text-align: center; margin-bottom: 10px; padding-top: 10px;
+  }
+  .section-title h2 {
+    font-size: 28px; font-weight: 700;
+    background: linear-gradient(135deg, var(--primary), var(--accent1));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .section-title p { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+
+  /* ---- NODE ---- */
+  .node {
+    position: absolute;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 24px;
+    min-width: 180px;
+    cursor: grab;
+    transition: all 0.3s cubic-bezier(.4,0,.2,1);
+    box-shadow: var(--shadow);
+    user-select: none;
+  }
+  .node:hover {
+    transform: translateY(-4px) scale(1.03);
+    box-shadow: var(--shadow-hover);
+    border-color: var(--primary);
+    z-index: 20;
+  }
+  .node:active { cursor: grabbing; }
+  .node.dragging { opacity: 0.85; z-index: 50; }
+
+  .node-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; margin-bottom: 10px;
+  }
+  .node-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .node-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+  /* color accents */
+  .node[data-color="indigo"]  { border-left: 4px solid var(--primary); }
+  .node[data-color="indigo"] .node-icon { background: rgba(99,102,241,0.12); }
+  .node[data-color="cyan"]    { border-left: 4px solid var(--accent1); }
+  .node[data-color="cyan"] .node-icon   { background: rgba(6,182,212,0.12); }
+  .node[data-color="violet"]  { border-left: 4px solid var(--accent2); }
+  .node[data-color="violet"] .node-icon { background: rgba(139,92,246,0.12); }
+  .node[data-color="pink"]    { border-left: 4px solid var(--accent3); }
+  .node[data-color="pink"] .node-icon   { background: rgba(236,72,153,0.12); }
+  .node[data-color="amber"]   { border-left: 4px solid var(--accent4); }
+  .node[data-color="amber"] .node-icon  { background: rgba(245,158,11,0.12); }
+  .node[data-color="green"]   { border-left: 4px solid var(--accent5); }
+  .node[data-color="green"] .node-icon  { background: rgba(16,185,129,0.12); }
+
+  /* ---- EXPANDED DETAIL ---- */
+  .node-detail {
+    max-height: 0; overflow: hidden; opacity: 0;
+    transition: max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease;
+    margin-top: 0;
+  }
+  .node.expanded .node-detail {
+    max-height: 300px; opacity: 1; margin-top: 12px;
+  }
+  .node-detail-inner {
+    padding: 12px; background: var(--bg); border-radius: 10px; font-size: 12px; line-height: 1.7;
+  }
+  .node-detail-inner ul { padding-left: 16px; }
+  .node-detail-inner li { margin-bottom: 2px; }
+  .expand-hint {
+    font-size: 10px; color: var(--primary); margin-top: 8px; font-weight: 500;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* ---- SVG CONNECTORS ---- */
+  svg.connectors {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 1;
+  }
+  svg.connectors path {
+    fill: none; stroke: var(--connector); stroke-width: 2;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 1.5s linear infinite;
+  }
+  svg.connectors path.active { stroke: var(--primary); stroke-width: 2.5; filter: drop-shadow(0 0 4px var(--glow)); }
+  @keyframes dashFlow { to { stroke-dashoffset: -24; } }
+  svg.connectors circle.arrow-dot {
+    fill: var(--connector); transition: fill 0.3s;
+  }
+  svg.connectors circle.arrow-dot.active { fill: var(--primary); }
+
+  /* ---- TOOLTIP ---- */
+  .tooltip {
+    position: fixed; padding: 8px 14px; background: var(--text); color: var(--bg);
+    border-radius: 8px; font-size: 12px; pointer-events: none;
+    opacity: 0; transition: opacity 0.2s; z-index: 200; max-width: 220px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  }
+  .tooltip.visible { opacity: 1; }
+
+  /* ---- MINIMAP ---- */
+  .minimap {
+    position: fixed; bottom: 20px; right: 20px;
+    width: 200px; height: 140px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
+    z-index: 90; transition: opacity 0.3s;
+  }
+  .minimap canvas { width: 100%; height: 100%; }
+
+  /* ---- ANIMATE IN ---- */
+  .node { opacity: 0; transform: translateY(30px); }
+  .node.visible { opacity: 1; transform: translateY(0); }
+  .node:hover { transform: translateY(-4px) scale(1.03) !important; }
+
+  /* ---- STATUS BADGE ---- */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: 10px; font-weight: 600; margin-top: 6px;
+  }
+  .badge.live   { background: rgba(16,185,129,0.15); color: #059669; }
+  .badge.beta   { background: rgba(245,158,11,0.15); color: #d97706; }
+  .badge.new    { background: rgba(99,102,241,0.15); color: #6366f1; }
+
+  /* ---- RESPONSIVE ---- */
+  @media (max-width: 900px) {
+    .canvas { transform: scale(0.6); transform-origin: top left; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <h1>⚡ Interactive System Architecture</h1>
+  <div class="toolbar-actions">
+    <button class="btn" onclick="zoomOut()">➖</button>
+    <span class="zoom-display" id="zoomLabel">100%</span>
+    <button class="btn" onclick="zoomIn()">➕</button>
+    <button class="btn" onclick="resetPositions()">↩️ Reset</button>
+    <button class="btn" id="animBtn" onclick="toggleFlow()">▶️ Animate Flow</button>
+    <button class="btn" id="themeBtn" onclick="toggleTheme()">🌙 Dark</button>
+  </div>
+</div>
+
+<!-- TOOLTIP -->
+<div class="tooltip" id="tooltip"></div>
+
+<!-- CANVAS -->
+<div class="canvas-wrapper">
+<div class="canvas" id="canvas">
+
+  <div class="section-title"><h2>Modern SaaS Architecture Diagram</h2>
+    <p>Click nodes to expand · Drag to rearrange · Hover for tooltips · Toggle theme & animation</p>
+  </div>
+
+  <svg class="connectors" id="svg"></svg>
+
+  <!-- ======= NODES ======= -->
+  <!-- Row 1: User Layer -->
+  <div class="node" data-color="indigo" id="n-user" data-tip="All user-facing entry points"
+       style="left:560px;top:80px;width:220px;">
+    <div class="node-icon">👤</div>
+    <div class="node-title">User / Client</div>
+    <div class="node-desc">Web browser, mobile app, or 3rd-party API consumer.</div>
+    <span class="badge new">Entry Point</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>React / Next.js SPA</li>
+        <li>React Native mobile app</li>
+        <li>REST & GraphQL API clients</li>
+        <li>OAuth 2.0 & JWT auth</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <!-- Row 2: Gateway & Auth -->
+  <div class="node" data-color="cyan" id="n-gateway" data-tip="Routes, rate-limits & authenticates every request"
+       style="left:320px;top:280px;width:220px;">
+    <div class="node-icon">🌐</div>
+    <div class="node-title">API Gateway</div>
+    <div class="node-desc">Nginx + Kong — routing, rate limiting, TLS termination.</div>
+    <span class="badge live">Live</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>Rate limiting: 1 000 req/min</li>
+        <li>JWT validation middleware</li>
+        <li>Request logging & tracing</li>
+        <li>Circuit breaker pattern</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <div class="node" data-color="violet" id="n-auth" data-tip="Handles identity, tokens & permissions"
+       style="left:800px;top:280px;width:220px;">
+    <div class="node-icon">🔐</div>
+    <div class="node-title">Auth Service</div>
+    <div class="node-desc">OAuth 2.0, SSO, MFA, role-based access control.</div>
+    <span class="badge live">Live</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>Google, GitHub, SAML SSO</li>
+        <li>TOTP / WebAuthn MFA</li>
+        <li>Refresh token rotation</li>
+        <li>RBAC with 5 permission tiers</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <!-- Row 3: Core Services -->
+  <div class="node" data-color="pink" id="n-core" data-tip="Main business logic microservices"
+       style="left:140px;top:490px;width:220px;">
+    <div class="node-icon">⚙️</div>
+    <div class="node-title">Core Services</div>
+    <div class="node-desc">Microservices: Orders, Billing, Users, Notifications.</div>
+    <span class="badge live">Live</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>Node.js & Go microservices</li>
+        <li>gRPC inter-service calls</li>
+        <li>Event-driven via Kafka</li>
+        <li>99.95% uptime SLA</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <div class="node" data-color="amber" id="n-ml" data-tip="AI/ML models for recommendations & fraud detection"
+       style="left:560px;top:490px;width:220px;">
+    <div class="node-icon">🤖</div>
+    <div class="node-title">ML Pipeline</div>
+    <div class="node-desc">Recommendation engine, fraud detection, NLP.</div>
+    <span class="badge beta">Beta</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>Python / PyTorch models</li>
+        <li>Feature store (Feast)</li>
+        <li>Real-time inference < 50ms</li>
+        <li>A/B experiment framework</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <div class="node" data-color="green" id="n-queue" data-tip="Async messaging & event streaming"
+       style="left:980px;top:490px;width:220px;">
+    <div class="node-icon">📨</div>
+    <div class="node-title">Message Queue</div>
+    <div class="node-desc">Kafka + RabbitMQ for async event processing.</div>
+    <span class="badge live">Live</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>Kafka: 12 partitions, 3x replication</li>
+        <li>Dead-letter queue handling</li>
+        <li>Event sourcing for audit log</li>
+        <li>Schema registry (Avro)</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <!-- Row 4: Data Layer -->
+  <div class="node" data-color="indigo" id="n-db" data-tip="Primary relational database"
+       style="left:260px;top:700px;width:200px;">
+    <div class="node-icon">🗄️</div>
+    <div class="node-title">PostgreSQL</div>
+    <div class="node-desc">Primary relational DB — ACID, read replicas.</div>
+    <span class="badge live">Live</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>3 read replicas</li>
+        <li>PgBouncer connection pooling</li>
+        <li>Daily WAL backups to S3</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <div class="node" data-color="cyan" id="n-cache" data-tip="In-memory caching layer"
+       style="left:620px;top:700px;width:200px;">
+    <div class="node-icon">⚡</div>
+    <div class="node-title">Redis Cache</div>
+    <div class="node-desc">Session store, caching, pub/sub, rate-limit counters.</div>
+    <span class="badge live">Live</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>Redis Cluster (6 nodes)</li>
+        <li>TTL-based cache invalidation</li>
+        <li>95% cache hit rate</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <div class="node" data-color="violet" id="n-storage" data-tip="Object & file storage"
+       style="left:960px;top:700px;width:200px;">
+    <div class="node-icon">☁️</div>
+    <div class="node-title">Cloud Storage</div>
+    <div class="node-desc">AWS S3 — files, backups, static assets, ML artifacts.</div>
+    <span class="badge live">Live</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>S3 + CloudFront CDN</li>
+        <li>Lifecycle policies (IA → Glacier)</li>
+        <li>Pre-signed upload URLs</li>
+      </ul>
+    </div></div>
+  </div>
+
+  <!-- Row 5: Monitoring -->
+  <div class="node" data-color="pink" id="n-monitor" data-tip="Observability & alerting stack"
+       style="left:560px;top:900px;width:240px;">
+    <div class="node-icon">📊</div>
+    <div class="node-title">Monitoring & Observability</div>
+    <div class="node-desc">Prometheus, Grafana, ELK Stack, PagerDuty alerts.</div>
+    <span class="badge new">New</span>
+    <div class="expand-hint">▼ Click to expand</div>
+    <div class="node-detail"><div class="node-detail-inner">
+      <ul>
+        <li>Distributed tracing (Jaeger)</li>
+        <li>Custom Grafana dashboards</li>
+        <li>Alerting → Slack + PagerDuty</li>
+        <li>SLO burn-rate alerts</li>
+      </ul>
+    </div></div>
+  </div>
+
+</div><!-- /canvas -->
+</div>
+
+<!-- ============ MINIMAP ============ -->
+<div class="minimap" id="minimap"><canvas id="minimapCanvas"></canvas></div>
+
+<script>
+// ---- CONNECTIONS ----
+const connections = [
+  ['n-user','n-gateway'],
+  ['n-user','n-auth'],
+  ['n-gateway','n-core'],
+  ['n-gateway','n-ml'],
+  ['n-gateway','n-queue'],
+  ['n-auth','n-core'],
+  ['n-core','n-db'],
+  ['n-core','n-cache'],
+  ['n-core','n-queue'],
+  ['n-ml','n-cache'],
+  ['n-ml','n-db'],
+  ['n-queue','n-storage'],
+  ['n-db','n-monitor'],
+  ['n-cache','n-monitor'],
+  ['n-storage','n-monitor'],
+];
+
+let zoom = 1;
+let flowActive = false;
+const canvas = document.getElementById('canvas');
+const svg = document.getElementById('svg');
+const tooltip = document.getElementById('tooltip');
+
+// ---- DRAW CONNECTORS ----
+function getCenter(el) {
+  const r = el.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  return { x: (r.left + r.width/2 - cr.left)/zoom, y: (r.top + r.height/2 - cr.top)/zoom };
+}
+function drawConnections() {
+  svg.innerHTML = '';
+  connections.forEach(([fromId, toId], i) => {
+    const a = document.getElementById(fromId);
+    const b = document.getElementById(toId);
+    if (!a || !b) return;
+    const p1 = getCenter(a), p2 = getCenter(b);
+    const mx = (p1.x+p2.x)/2, my = (p1.y+p2.y)/2;
+    const cp1x = p1.x, cp1y = my;
+    const cp2x = p2.x, cp2y = my;
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${p1.x},${p1.y} C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`);
+    path.setAttribute('data-from', fromId);
+    path.setAttribute('data-to', toId);
+    if (flowActive) path.classList.add('active');
+    svg.appendChild(path);
+    // end dot
+    const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    dot.setAttribute('cx', p2.x); dot.setAttribute('cy', p2.y);
+    dot.setAttribute('r', 4); dot.classList.add('arrow-dot');
+    if (flowActive) dot.classList.add('active');
+    svg.appendChild(dot);
+  });
+}
+
+// ---- DRAG ----
+let dragTarget = null, dragOff = {x:0,y:0};
+const originalPositions = {};
+
+document.querySelectorAll('.node').forEach(n => {
+  originalPositions[n.id] = { left: n.style.left, top: n.style.top };
+
+  n.addEventListener('mousedown', e => {
+    if (e.target.closest('.node-detail')) return;
+    dragTarget = n;
+    const r = n.getBoundingClientRect();
+    dragOff.x = e.clientX - r.left;
+    dragOff.y = e.clientY - r.top;
+    n.classList.add('dragging');
+  });
+
+  // Click to expand
+  n.addEventListener('click', e => {
+    if (dragMoved) return;
+    n.classList.toggle('expanded');
+    setTimeout(drawConnections, 400);
+  });
+
+  // Tooltip
+  n.addEventListener('mouseenter', e => {
+    const tip = n.dataset.tip;
+    if (!tip) return;
+    tooltip.textContent = tip;
+    tooltip.classList.add('visible');
+  });
+  n.addEventListener('mousemove', e => {
+    tooltip.style.left = e.clientX + 14 + 'px';
+    tooltip.style.top = e.clientY + 14 + 'px';
+  });
+  n.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+});
+
+let dragMoved = false;
+document.addEventListener('mousemove', e => {
+  if (!dragTarget) return;
+  dragMoved = true;
+  const cr = canvas.getBoundingClientRect();
+  dragTarget.style.left = (e.clientX - cr.left - dragOff.x) / zoom + 'px';
+  dragTarget.style.top  = (e.clientY - cr.top  - dragOff.y) / zoom + 'px';
+  drawConnections();
+  drawMinimap();
+});
+document.addEventListener('mouseup', () => {
+  if (dragTarget) dragTarget.classList.remove('dragging');
+  setTimeout(() => dragMoved = false, 10);
+  dragTarget = null;
+});
+
+// ---- ZOOM ----
+function setZoom(z) {
+  zoom = Math.max(0.3, Math.min(1.5, z));
+  canvas.style.transform = `scale(${zoom})`;
+  document.getElementById('zoomLabel').textContent = Math.round(zoom*100)+'%';
+  setTimeout(drawConnections, 310);
+}
+function zoomIn()  { setZoom(zoom + 0.1); }
+function zoomOut() { setZoom(zoom - 0.1); }
+
+// ---- RESET ----
+function resetPositions() {
+  document.querySelectorAll('.node').forEach(n => {
+    if (originalPositions[n.id]) {
+      n.style.left = originalPositions[n.id].left;
+      n.style.top  = originalPositions[n.id].top;
+    }
+    n.classList.remove('expanded');
+  });
+  setZoom(1);
+  setTimeout(() => { drawConnections(); drawMinimap(); }, 350);
+}
+
+// ---- FLOW ANIMATION TOGGLE ----
+function toggleFlow() {
+  flowActive = !flowActive;
+  document.getElementById('animBtn').classList.toggle('active', flowActive);
+  document.getElementById('animBtn').innerHTML = flowActive ? '⏸️ Pause Flow' : '▶️ Animate Flow';
+  drawConnections();
+}
+
+// ---- THEME ----
+function toggleTheme() {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? '' : 'dark');
+  document.getElementById('themeBtn').innerHTML = dark ? '🌙 Dark' : '☀️ Light';
+  setTimeout(drawMinimap, 400);
+}
+
+// ---- MINIMAP ----
+function drawMinimap() {
+  const mc = document.getElementById('minimapCanvas');
+  const ctx = mc.getContext('2d');
+  mc.width = 200; mc.height = 140;
+  ctx.clearRect(0,0,200,140);
+  const scale = 0.13;
+  const colors = { indigo:'#6366f1', cyan:'#06b6d4', violet:'#8b5cf6',
+                   pink:'#ec4899', amber:'#f59e0b', green:'#10b981' };
+  document.querySelectorAll('.node').forEach(n => {
+    const l = parseFloat(n.style.left), t = parseFloat(n.style.top);
+    const w = n.offsetWidth, h = n.offsetHeight;
+    ctx.fillStyle = colors[n.dataset.color] || '#999';
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(l*scale+10, t*scale+4, w*scale, h*scale);
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ---- ENTRANCE ANIMATION ----
+function animateIn() {
+  const nodes = document.querySelectorAll('.node');
+  nodes.forEach((n, i) => {
+    setTimeout(() => { n.classList.add('visible'); }, i * 120);
+  });
+  setTimeout(() => { drawConnections(); drawMinimap(); }, nodes.length * 120 + 400);
+}
+
+// ---- HIGHLIGHT CONNECTED ON HOVER ----
+document.querySelectorAll('.node').forEach(n => {
+  n.addEventListener('mouseenter', () => {
+    svg.querySelectorAll('path').forEach(p => {
+      if (p.dataset.from === n.id || p.dataset.to === n.id) {
+        p.classList.add('active');
+      }
+    });
+    svg.querySelectorAll('circle').forEach(c => c.classList.add('active'));
+  });
+  n.addEventListener('mouseleave', () => {
+    if (!flowActive) {
+      svg.querySelectorAll('path').forEach(p => p.classList.remove('active'));
+      svg.querySelectorAll('circle').forEach(c => c.classList.remove('active'));
+    }
+  });
+});
+
+// ---- INIT ----
+window.addEventListener('load', animateIn);
+window.addEventListener('resize', () => { drawConnections(); drawMinimap(); });
+</script>
+</body>
+</html>
